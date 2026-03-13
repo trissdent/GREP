@@ -4,8 +4,16 @@ import json
 import numpy as np
 from tqdm import tqdm
 
-rel2id = json.load(open('./dataset/meta/rel2id.json', 'r'))
-id2rel = {value: key for key, value in rel2id.items()}
+rel2id = None
+id2rel = None
+
+def load_rel2id(data_dir):
+    global rel2id, id2rel
+    if rel2id is None:
+        rel2id_path = os.path.join(data_dir, "rel2id.json")
+        rel2id = json.load(open(rel2id_path, 'r'))
+        id2rel = {value: key for key, value in rel2id.items()}
+        print(f"Loaded rel2id from {rel2id_path} ({len(rel2id)} relations)")
 
 def get_title2pred(pred: list) -> dict:
     '''

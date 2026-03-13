@@ -8,13 +8,14 @@ import ujson as json
 from torch.cuda.amp import GradScaler
 from torch.utils.data import DataLoader
 from transformers import AutoConfig, AutoModel, AutoTokenizer
-from transformers.optimization import AdamW, get_linear_schedule_with_warmup
+from transformers.optimization import get_linear_schedule_with_warmup
+from torch.optim import AdamW
 
 from args import add_args
 from model import DocREModel
 from utils import set_seed, collate_fn, create_directory
 from prepro import read_docred
-from evaluation import to_official, official_evaluate, merge_results
+from evaluation import to_official, official_evaluate, merge_results, load_rel2id
 import wandb
 from tqdm import tqdm
 
@@ -270,7 +271,7 @@ def main():
     parser = argparse.ArgumentParser()
     parser = add_args(parser)
     args = parser.parse_args()
-        
+    load_rel2id(args.data_dir)
     wandb.init(project="project", name="name")
 
     # create directory to save checkpoints and predicted files

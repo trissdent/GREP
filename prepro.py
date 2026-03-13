@@ -4,7 +4,7 @@ import numpy as np
 import pickle
 import os
 import pandas as pd
-docred_rel2id = json.load(open('./dataset/meta/rel2id.json', 'r'))
+docred_rel2id = None 
 docred_ent2id = {'NA': 0, 'ORG': 1, 'LOC': 2, 'NUM': 3, 'TIME': 4, 'MISC': 5, 'PER': 6}
 
 def add_entity_markers(sample, tokenizer, entity_start, entity_end):
@@ -175,6 +175,14 @@ def read_docred(file_in,
                 max_seq_length=1024, 
                 teacher_sig_path="",
                 single_results=None):
+
+    global docred_rel2id
+    if docred_rel2id is None:
+        data_dir = os.path.dirname(file_in)
+        rel2id_path = os.path.join(data_dir, "rel2id.json")
+        docred_rel2id = json.load(open(rel2id_path, 'r'))
+        print(f"Loaded rel2id from {rel2id_path} ({len(docred_rel2id)} relations)")
+
     i_line = 0
     pos_samples = 0
     neg_samples = 0
@@ -283,7 +291,7 @@ def read_docred(file_in,
             print(hts_graph)
             graph_list.append(hts_graph)
         assert len(relations) == len(entities) * (len(entities) - 1)
-        assert len(sents) < max_seq_length
+        # assert len(sents) < max_seq_length
         sents = sents[:max_seq_length - 2] # truncate, -2 for [CLS] and [SEP]
         input_ids = tokenizer.convert_tokens_to_ids(sents)
         input_ids = tokenizer.build_inputs_with_special_tokens(input_ids)
@@ -311,7 +319,7 @@ def read_docred(file_in,
 
         i_line += len(feature)
         features.extend(feature)
-    save_graphs(graph_list,"your_path")
+
     print("# of documents {}.".format(i_line))
     if single_results != None:
         print("# of positive examples {}.".format(pred_pos_samples))
