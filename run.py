@@ -83,7 +83,7 @@ def train(args, model, train_features, dev_features):
                     num_steps += 1
                     
                 wandb.log(outputs["loss"], step=num_steps)
-                if((step+1) % 10 == 0): print("loss:",loss.item())
+                if((step+1) % 500 == 0): print("loss:",loss.item())
                 if (step + 1) == len(train_dataloader) or (args.evaluation_steps > 0 and num_steps % args.evaluation_steps == 0 and step % args.gradient_accumulation_steps == 0):
                     
                     dev_scores, dev_output, official_results, results = evaluate(args, model, dev_features, tag="dev")
