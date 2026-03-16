@@ -145,7 +145,7 @@ def merge_results(pred: list, pred_pseudo: list, features: list, thresh: float =
         merged_res.extend([{'title':r[2], 'h_idx':r[3], 't_idx':r[4], 'r': r[5]} for r in cand])
         return merged_res, thresh
 
-    if cand != []:
+    if len(cand) > 0:
         thresh, cand = select_thresh(cand, num_gt, correct, num_pred)
         merged_res.extend([{'title':r[2], 'h_idx':r[3], 't_idx':r[4], 'r': r[5]} for r in cand])
 
@@ -202,7 +202,7 @@ def to_official(preds: list, features: list, evi_preds: list = [], scores: list 
     res = []
 
     for i in tqdm(range(preds.shape[0]), desc="preds"): # for each entity pair
-        if scores != []:
+        if len(scores) > 0:
             score = extract_relative_score(scores[i], topks[i]) 
             pred = topks[i] 
         else:
@@ -216,11 +216,11 @@ def to_official(preds: list, features: list, evi_preds: list = [], scores: list 
                     't_idx': t_idx[i],
                     'r': id2rel[p],
                 } 
-            if evi_preds != []:
+            if len(evi_preds) > 0:
                 curr_evi = evi_preds[i] 
                 evis = np.nonzero(curr_evi)[0].tolist()  
                 curr_result["evidence"] = [evi for evi in evis if evi < sents[i]]
-            if scores != []:
+            if len(scores) > 0:
                 curr_result["score"] = score[np.where(topks[i] == p)].item() 
             if p != 0 and p in np.nonzero(preds[i])[0].tolist():
                 official_res.append(curr_result)
@@ -266,8 +266,12 @@ def official_evaluate(tmp, path, train_file = "train_annotated.json", dev_file =
         os.makedirs(truth_dir)
 
     fact_in_train_annotated = gen_train_facts(os.path.join(path, train_file), truth_dir)
-    fact_in_train_distant = gen_train_facts(os.path.join(path, "train_distant.json"), truth_dir)
-
+    distant_path = os.path.join(path, "train_distant.json")
+    if os.path.exists(distant_path):
+        fact_in_train_distant = gen_train_facts(distant_path, truth_dir)
+    else:
+        fact_in_train_distant = set()
+        
     truth = json.load(open(os.path.join(path, dev_file)))
         
     std = {}
@@ -374,3 +378,124 @@ def official_evaluate(tmp, path, train_file = "train_annotated.json", dev_file =
     return [re_p, re_r, re_f1], [evi_p, evi_r, evi_f1],\
         [re_p_ignore_train_annotated, re_r, re_f1_ignore_train_annotated], \
         [re_p_ignore_train, re_r, re_f1_ignore_train]
+
+def official_evaluate_per_class(tmp, path, train_file="train_annotated.json", dev_file="dev.json"):
+    '''
+    Same as official_evaluate but also returns per-class P/R/F1.
+    '''
+    truth_dir = os.path.join(path, 'ref')
+    if not os.path.exists(truth_dir):
+        os.makedirs(truth_dir)
+
+    fact_in_train_annotated = gen_train_facts(os.path.join(path, train_file), truth_dir)
+    fact_in_train_distant = gen_train_facts(os.path.join(path, "train_distant.json"), truth_dir)
+
+    truth = json.load(open(os.path.join(path, dev_file)))
+
+    std = {}
+    tot_evidences = 0
+    title2vectexSet = {}
+
+    for x in truth:
+        title = x['title']
+        title2vectexSet[title] = x['vertexSet']
+        if 'labels' not in x:
+            continue
+        for label in x['labels']:
+            r = label['r']
+            h_idx = label['h']
+            t_idx = label['t']
+            std[(title, r, h_idx, t_idx)] = set(label['evidence'])
+            tot_evidences += len(label['evidence'])
+
+    tot_relations = len(std)
+    tmp.sort(key=lambda x: (x['title'], x['h_idx'], x['t_idx'], x['r']))
+    submission_answer = [tmp[0]]
+    for i in range(1, len(tmp)):
+        x = tmp[i]
+        y = tmp[i - 1]
+        if (x['title'], x['h_idx'], x['t_idx'], x['r']) != (y['title'], y['h_idx'], y['t_idx'], y['r']):
+            submission_answer.append(tmp[i])
+
+    correct_re = 0
+    correct_evidence = 0
+    pred_evi = 0
+    correct_in_train_annotated = 0
+    correct_in_train_distant = 0
+
+    from collections import defaultdict
+    tp_per_class = defaultdict(int)
+    fp_per_class = defaultdict(int)
+    fn_per_class = defaultdict(int)
+
+    for x in submission_answer:
+        title = x['title']
+        h_idx = x['h_idx']
+        t_idx = x['t_idx']
+        r = x['r']
+
+        if title not in title2vectexSet:
+            fp_per_class[r] += 1
+            continue
+
+        vertexSet = title2vectexSet[title]
+        if 'evidence' in x:
+            evi = set(x['evidence'])
+        else:
+            evi = set([])
+        pred_evi += len(evi)
+
+        if (title, r, h_idx, t_idx) in std:
+            correct_re += 1
+            tp_per_class[r] += 1
+            stdevi = std[(title, r, h_idx, t_idx)]
+            correct_evidence += len(stdevi & evi)
+            in_train_annotated = in_train_distant = False
+            for n1 in vertexSet[h_idx]:
+                for n2 in vertexSet[t_idx]:
+                    if (n1['name'], n2['name'], r) in fact_in_train_annotated:
+                        in_train_annotated = True
+                    if (n1['name'], n2['name'], r) in fact_in_train_distant:
+                        in_train_distant = True
+            if in_train_annotated:
+                correct_in_train_annotated += 1
+            if in_train_distant:
+                correct_in_train_distant += 1
+        else:
+            fp_per_class[r] += 1
+
+    # FN: ground truth not predicted
+    predicted_set = set()
+    for x in submission_answer:
+        predicted_set.add((x['title'], x['r'], x['h_idx'], x['t_idx']))
+    for (title, r, h_idx, t_idx) in std:
+        if (title, r, h_idx, t_idx) not in predicted_set:
+            fn_per_class[r] += 1
+
+    # overall (same as original)
+    re_p = 1.0 * correct_re / len(submission_answer)
+    re_r = 1.0 * correct_re / tot_relations if tot_relations != 0 else 0
+    re_f1 = 2.0 * re_p * re_r / (re_p + re_r) if (re_p + re_r) > 0 else 0
+
+    evi_p = 1.0 * correct_evidence / pred_evi if pred_evi > 0 else 0
+    evi_r = 1.0 * correct_evidence / tot_evidences if tot_evidences > 0 else 0
+    evi_f1 = 2.0 * evi_p * evi_r / (evi_p + evi_r) if (evi_p + evi_r) > 0 else 0
+
+    re_p_ign = 1.0 * (correct_re - correct_in_train_annotated) / (len(submission_answer) - correct_in_train_annotated + 1e-5)
+    re_f1_ign = 2.0 * re_p_ign * re_r / (re_p_ign + re_r) if (re_p_ign + re_r) > 0 else 0
+
+    # per-class
+    all_classes = set(list(tp_per_class.keys()) + list(fp_per_class.keys()) + list(fn_per_class.keys()))
+    per_class = {}
+    for r in sorted(all_classes):
+        tp = tp_per_class[r]
+        fp = fp_per_class[r]
+        fn = fn_per_class[r]
+        p = tp / (tp + fp) if (tp + fp) > 0 else 0.0
+        rec = tp / (tp + fn) if (tp + fn) > 0 else 0.0
+        f1 = 2 * p * rec / (p + rec) if (p + rec) > 0 else 0.0
+        per_class[r] = {'TP': tp, 'FP': fp, 'FN': fn, 'support': tp + fn,
+                        'P': round(p * 100, 2), 'R': round(rec * 100, 2), 'F1': round(f1 * 100, 2)}
+
+    return [re_p, re_r, re_f1], [evi_p, evi_r, evi_f1], \
+        [re_p_ign, re_r, re_f1_ign], per_class

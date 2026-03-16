@@ -194,15 +194,15 @@ def evaluate(args, model, features, tag="dev"):
 
     preds = np.concatenate(preds, axis=0)
     
-    if doc_rel != []:
+    if len(doc_rel) > 0:
         doc_preds = np.concatenate(doc_preds, axis=0).astype(np.float32)
         doc_labels = np.array(doc_rel, dtype=np.float32)
         best_threshold, doc_f1,doc_precision,doc_recall = find_best_threshold(doc_preds,doc_labels>0)
-    if scores != []:
+    if len(scores) > 0:
         scores = np.concatenate(scores, axis=0)
         topks =  np.concatenate(topks, axis=0)
 
-    if evi_preds != []:
+    if len(evi_preds) > 0:
         evi_preds = np.concatenate(evi_preds, axis=0)
     
     official_results, results = to_official(preds, features, evi_preds = evi_preds, scores = scores, topks = topks)
@@ -311,7 +311,7 @@ def main():
 
     if args.load_path != "": # load model from existing checkpoint
 
-        model_path = os.path.join(args.load_path, "last.ckpt")
+        model_path = os.path.join(args.load_path, "best.ckpt")
         model.load_state_dict(torch.load(model_path, map_location=device))
 
     if args.do_train:  # Training
@@ -343,7 +343,26 @@ def main():
             score_path = os.path.join(args.load_path, f"{basename}_scores.csv")
             res_path = os.path.join(args.load_path, f"topk_{args.pred_file}")
 
-            dump_to_file(official_results, offi_path, test_output, score_path, results, res_path)          
+            dump_to_file(official_results, offi_path, test_output, score_path, results, res_path)
+
+            # ── per-class ──
+            from evaluation import official_evaluate_per_class
+            _, _, _, per_class = official_evaluate_per_class(
+                official_results, args.data_dir, args.train_file, args.test_file
+            )
+            rows = []
+            for r_name in sorted(per_class.keys()):
+                m = per_class[r_name]
+                rows.append({'relation': r_name, 'TP': m['TP'], 'FP': m['FP'], 'FN': m['FN'],
+                             'support': m['support'], 'P': m['P'], 'R': m['R'], 'F1': m['F1']})
+            df_pc = pd.DataFrame(rows).sort_values('F1', ascending=False).reset_index(drop=True)
+            pd.set_option('display.max_rows', None)
+            pd.set_option('display.width', 200)
+            print("\n========== PER-CLASS RESULTS ==========")
+            print(df_pc.to_string(index=False))
+            csv_path = os.path.join(args.load_path, f"{basename}_per_class.csv")
+            df_pc.to_csv(csv_path, index=False)
+            print(f"\nSaved to: {csv_path}")        
 
         else: # inference stage fusion
 
