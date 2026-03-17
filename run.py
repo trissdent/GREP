@@ -16,7 +16,7 @@ from model import DocREModel
 from utils import set_seed, collate_fn, create_directory
 from prepro import read_docred
 from evaluation import to_official, official_evaluate, merge_results, load_rel2id
-import wandb
+# import wandb
 from tqdm import tqdm
 
 import pandas as pd
@@ -82,12 +82,12 @@ def train(args, model, train_features, dev_features):
                     model.zero_grad()
                     num_steps += 1
                     
-                wandb.log(outputs["loss"], step=num_steps)
+                # wandb.log(outputs["loss"], step=num_steps)
                 if((step+1) % 500 == 0): print("loss:",loss.item())
                 if (step + 1) == len(train_dataloader) or (args.evaluation_steps > 0 and num_steps % args.evaluation_steps == 0 and step % args.gradient_accumulation_steps == 0):
                     
                     dev_scores, dev_output, official_results, results = evaluate(args, model, dev_features, tag="dev")
-                    wandb.log(dev_scores, step=num_steps)
+                    # wandb.log(dev_scores, step=num_steps)
                     
                     print(dev_output)
                     if epoch >= 19:
@@ -272,7 +272,7 @@ def main():
     parser = add_args(parser)
     args = parser.parse_args()
     load_rel2id(args.data_dir)
-    wandb.init(project="project", name="name")
+    # wandb.init(project="project", name="name")
 
     # create directory to save checkpoints and predicted files
     time = str(datetime.datetime.now()).replace(' ','_')
@@ -337,7 +337,7 @@ def main():
         if args.eval_mode != "fushion":
 
             test_scores, test_output, official_results, results = evaluate(args, model, test_features, tag="test")   
-            wandb.log(test_scores)
+            # wandb.log(test_scores)
 
             offi_path = os.path.join(args.load_path, args.pred_file)
             score_path = os.path.join(args.load_path, f"{basename}_scores.csv")
@@ -390,7 +390,7 @@ def main():
                 tag + "_evi": [i * 100 for i in merged_evi],
             }
             
-            wandb.log({"dev_F1": merged_re[-1] * 100, "dev_evi_F1": merged_evi[-1] * 100, "dev_F1_ign": merged_re_ign[-1] * 100})
+            # wandb.log({"dev_F1": merged_re[-1] * 100, "dev_evi_F1": merged_evi[-1] * 100, "dev_F1_ign": merged_re_ign[-1] * 100})
 
             offi_path = os.path.join(args.results_path, f"fused_{args.pred_file}")
             score_path = os.path.join(args.results_path, f"{basename}_fused_scores.csv")

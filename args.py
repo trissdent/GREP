@@ -3,16 +3,16 @@ import argparse
 
 def add_args(parser):
     parser.add_argument("--do_train", action="store_true")
-    parser.add_argument("--data_dir", default="./dataset/docred", type=str)
+    parser.add_argument("--data_dir", default="/root/data", type=str)
     parser.add_argument("--transformer_type", default="bert", type=str)
     parser.add_argument("--model_name_or_path", default="bert-base-cased", type=str)
     parser.add_argument("--display_name", default=None, type=str)
     
     parser.add_argument("--train_file", default="train_annotated.json", type=str)
     parser.add_argument("--dev_file", default="dev.json", type=str)
-    parser.add_argument("--test_file", default="", type=str)
+    parser.add_argument("--test_file", default="test.json", type=str)
     parser.add_argument("--pred_file", default="results.json", type=str)
-    parser.add_argument("--save_path", default="", type=str)
+    parser.add_argument("--save_path", default="/root/checkpoint", type=str)
     parser.add_argument("--load_path", default="", type=str)
     parser.add_argument("--results_path", default="", type=str)
     parser.add_argument("--teacher_sig_path", default="", type=str)
@@ -28,7 +28,7 @@ def add_args(parser):
 
     parser.add_argument("--train_batch_size", default=4, type=int,
                         help="Batch size for training.")
-    parser.add_argument("--test_batch_size", default=8, type=int,
+    parser.add_argument("--test_batch_size", default=4, type=int,
                         help="Batch size for testing.")
     parser.add_argument("--eval_mode", default="single", type=str,
                         choices=["single", "fushion"], 
@@ -61,7 +61,7 @@ def add_args(parser):
                         help="Number of training steps between evaluations.")
     parser.add_argument("--seed", type=int, default=66,
                         help="random seed for initialization")
-    parser.add_argument("--num_class", type=int, default=97,
+    parser.add_argument("--num_class", type=int, default=14,
                         help="Number of relation types in dataset.")
 
     return parser
