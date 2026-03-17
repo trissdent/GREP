@@ -37,7 +37,7 @@ def add_args(parser):
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
     parser.add_argument("--num_labels", default=4, type=int,
                         help="Max number of labels in prediction.")
-    parser.add_argument("--max_sent_num", default=25, type=int,
+    parser.add_argument("--max_sent_num", default=90, type=int,
                         help="Max number of sentences in each document.")
     parser.add_argument("--evi_thresh", default=0.2, type=float,
                         help="Evidence Threshold. ")
