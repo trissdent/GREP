@@ -16,6 +16,7 @@ def add_entity_markers(sample, tokenizer, entity_start, entity_end):
 
     sent_start = 0
     for i_s, sent in enumerate(sample['sents']):
+    # add * marks to the beginning and end of entities
         new_map = {}
         
         for i_t, token in enumerate(sent):
@@ -28,9 +29,11 @@ def add_entity_markers(sample, tokenizer, entity_start, entity_end):
             sents.extend(tokens_wordpiece)
         
         sent_end = len(sents)
+        # [sent_start, sent_end)
         sent_pos.append((sent_start, sent_end,))
         sent_start = sent_end
         
+        # update the start/end position of each token.
         new_map[i_t + 1] = len(sents)
         sent_map.append(new_map)
 
@@ -39,12 +42,16 @@ def add_entity_markers(sample, tokenizer, entity_start, entity_end):
 def save_graphs(graphs, base_filename):
     for idx, graph in enumerate(graphs):
         df = pd.DataFrame(graph)
+    
         filename = f"{base_filename}/graph_{idx + 1}.csv"
+        
         df.to_csv(filename, index=False, header=False)
+        
         print(f"Saved {filename}")
 
 
 def get_pseudo_features(raw_feature: dict, pred_rels: list, entities: list, sent_map: dict, offset: int, tokenizer = None): 
+
     ''' Construct pseudo documents from predictions.'''
     
     pos_samples = 0
@@ -54,12 +61,13 @@ def get_pseudo_features(raw_feature: dict, pred_rels: list, entities: list, sent
     pseudo_features = []
 
     for pred_rel in pred_rels:
-        curr_sents = pred_rel["evidence"]
+        curr_sents = pred_rel["evidence"] #evidence sentence
         if len(curr_sents) == 0:
             continue
 
+        # check if head/tail entity presents in evidence. if not, append sentence containing the first mention of head/tail into curr_sents
         head_sents = sorted([m["sent_id"] for m in entities[pred_rel["h_idx"]]]) 
-        tail_sents = sorted([m["sent_id"] for m in entities[pred_rel["t_idx"]]])
+        tail_sents = sorted([m["sent_id"] for m in entities[pred_rel["t_idx"]]]) #same
 
         if len(set(head_sents) & set(curr_sents)) == 0: 
             curr_sents.append(head_sents[0]) 
@@ -67,24 +75,29 @@ def get_pseudo_features(raw_feature: dict, pred_rels: list, entities: list, sent
             curr_sents.append(tail_sents[0])
 
         curr_sents = sorted(set(curr_sents)) 
-        if curr_sents in sent_grps:
+        if curr_sents in sent_grps: # skip if such sentence group has already been created
             continue
         sent_grps.append(curr_sents)
 
+        # new sentence masks and input ids
         old_sent_pos = [raw_feature["sent_pos"][i] for i in curr_sents] 
         new_input_ids_each = [raw_feature["input_ids"][s[0] + offset:s[1] + offset] for s in old_sent_pos] 
         new_input_ids = sum(new_input_ids_each, [])
         new_input_ids = tokenizer.build_inputs_with_special_tokens(new_input_ids)
  
         new_sent_pos = []
+
         prev_len = 0
         for sent in old_sent_pos: 
-            curr_sent_pos = (prev_len, prev_len + sent[1] - sent[0])
+            curr_sent_pos =  (prev_len, prev_len + sent[1] - sent[0])
             new_sent_pos.append(curr_sent_pos)
             prev_len += sent[1] - sent[0]
 
+        # iterate through all entities, keep only entities with mention in curr_sents.
+        
+        # obtain entity positions w.r.t whole document
         curr_entities = []  
-        ent_new2old = {}
+        ent_new2old = {} # head/tail of a relation should be selected
         new_entity_pos = []
 
         for i, entity in enumerate(entities):
@@ -100,8 +113,9 @@ def get_pseudo_features(raw_feature: dict, pred_rels: list, entities: list, sent
             if curr != []:
                 curr_entities.append(curr)
                 new_entity_pos.append(curr_pos)
-                ent_new2old[len(ent_new2old)] = i
-
+                ent_new2old[len(ent_new2old)] = i # update dictionary
+        
+        # iterate through all entities to obtain all entity pairs
         new_hts = []
         new_labels = []
         for h in range(len(curr_entities)):
@@ -114,7 +128,7 @@ def get_pseudo_features(raw_feature: dict, pred_rels: list, entities: list, sent
 
                     neg_samples += curr_label[0]
                     pos_samples += 1 - curr_label[0]
-        hts_graph = create_hts_graph(new_hts, new_entity_pos)
+        hts_graph = create_hts_graph(new_hts,new_entity_pos)
 
         pseudo_feature = {'input_ids': new_input_ids,
                     'entity_pos': new_entity_pos,
@@ -129,14 +143,15 @@ def get_pseudo_features(raw_feature: dict, pred_rels: list, entities: list, sent
         pseudo_features.append(pseudo_feature)
 
     return pseudo_features, pos_samples, neg_samples
-
-
-def create_hts_graph(hts, entities):
+def create_hts_graph(hts,entities):
     N_nodes = len(hts)
     nodes_adj = np.zeros((N_nodes, N_nodes), dtype=np.int32)
     edges_cnt = 1
+    # for i in range(N_nodes):
+    #     nodes_adj[i, i] = edges_cnt
+    # edges_cnt = 2
     for i in range(len(hts)):
-        for j in range(i+1, len(hts)):
+        for j in range(i+1,len(hts)):
             ht1 = hts[i]
             ht2 = hts[j]
             if ht1[0] == ht2[1]:
@@ -145,170 +160,14 @@ def create_hts_graph(hts, entities):
             elif ht1[1] == ht2[0]:
                 nodes_adj[i,j] = edges_cnt
                 nodes_adj[j,i] = edges_cnt
+            # if ht1[0] == ht2[1] and ht1[1] != ht2[0]:
+            #     nodes_adj[i,j] = edges_cnt
+            #     nodes_adj[j,i] = edges_cnt
+            # elif ht1[1] == ht2[0] and ht1[0] != ht2[1]:
+            #     nodes_adj[i,j] = edges_cnt
+            #     nodes_adj[j,i] = edges_cnt
+
     return nodes_adj
-
-
-def get_chunks(sent_pos, max_seq_length, overlap=2):
-    """Split sentence indices into overlapping chunks that fit in max_seq_length tokens."""
-    if len(sent_pos) == 0:
-        return [[]]
-    
-    total_tokens = sent_pos[-1][1]
-    if total_tokens <= max_seq_length - 2:
-        return [list(range(len(sent_pos)))]
-    
-    chunks = []
-    start_sent = 0
-    
-    while start_sent < len(sent_pos):
-        end_sent = start_sent
-        while end_sent < len(sent_pos):
-            token_count = sent_pos[end_sent][1] - sent_pos[start_sent][0]
-            if token_count > max_seq_length - 2:
-                break
-            end_sent += 1
-        
-        if end_sent == start_sent:
-            end_sent = start_sent + 1
-        
-        chunks.append(list(range(start_sent, end_sent)))
-        
-        if end_sent >= len(sent_pos):
-            break
-        
-        start_sent = end_sent - overlap
-        if start_sent < 0:
-            start_sent = 0
-    
-    return chunks
-
-
-def build_chunk_feature(sample, chunk_sent_ids, sents, sent_map, sent_pos, 
-                        tokenizer, transformer_type, docred_rel2id):
-    """Build a single feature dict for one chunk of sentences."""
-    
-    entities = sample['vertexSet']
-    
-    # Remap token positions for this chunk
-    chunk_start_token = sent_pos[chunk_sent_ids[0]][0]
-    
-    # Build chunk sents (tokens)
-    chunk_sents = []
-    for sid in chunk_sent_ids:
-        s, e = sent_pos[sid]
-        chunk_sents.extend(sents[s:e])
-    
-    # Truncate if single sentence is too long
-    max_chunk_tokens = 1024 - 2  # reserve for [CLS] [SEP]
-    chunk_sents = chunk_sents[:max_chunk_tokens]
-    
-    # Build chunk sent_pos (relative to chunk start)
-    chunk_sent_pos = []
-    for sid in chunk_sent_ids:
-        s, e = sent_pos[sid]
-        rel_s = s - chunk_start_token
-        rel_e = e - chunk_start_token
-        if rel_s >= len(chunk_sents):
-            break
-        rel_e = min(rel_e, len(chunk_sents))
-        chunk_sent_pos.append((rel_s, rel_e))
-    
-    chunk_sent_set = set(chunk_sent_ids)
-    
-    # Find which entities have mentions in this chunk
-    # old_ent_idx -> new_ent_idx
-    ent_old2new = {}
-    chunk_entity_pos = []
-    
-    for ent_idx, entity in enumerate(entities):
-        mentions_in_chunk = []
-        for m in entity:
-            if m["sent_id"] in chunk_sent_set:
-                start = sent_map[m["sent_id"]][m["pos"][0]] - chunk_start_token
-                end = sent_map[m["sent_id"]][m["pos"][1]] - chunk_start_token
-                if start >= 0 and start < len(chunk_sents):
-                    mentions_in_chunk.append((start, end))
-        
-        if mentions_in_chunk:
-            ent_old2new[ent_idx] = len(chunk_entity_pos)
-            chunk_entity_pos.append(mentions_in_chunk)
-    
-    if len(chunk_entity_pos) < 2:
-        return None  # need at least 2 entities for pairs
-    
-    # Build labels and hts for entities in this chunk
-    train_triple = {}
-    if "labels" in sample:
-        for label in sample['labels']:
-            h, t = label['h'], label['t']
-            if h not in ent_old2new or t not in ent_old2new:
-                continue
-            new_h = ent_old2new[h]
-            new_t = ent_old2new[t]
-            r = int(docred_rel2id[label['r']])
-            evidence = label['evidence']
-            
-            if (new_h, new_t) not in train_triple:
-                train_triple[(new_h, new_t)] = [{'relation': r, 'evidence': evidence}]
-            else:
-                train_triple[(new_h, new_t)].append({'relation': r, 'evidence': evidence})
-    
-    num_entities = len(chunk_entity_pos)
-    relations, hts, sent_labels = [], [], []
-    doc_rel = [0] * len(docred_rel2id)
-    pos_samples = 0
-    neg_samples = 0
-    
-    for h, t in train_triple.keys():
-        relation = [0] * len(docred_rel2id)
-        sent_evi = [0] * len(chunk_sent_pos)
-        
-        for mention in train_triple[h, t]:
-            relation[mention["relation"]] = 1
-            doc_rel[mention["relation"]] = 1
-            for evi_sid in mention["evidence"]:
-                # Map original sent_id to chunk-local sent index
-                if evi_sid in chunk_sent_ids:
-                    local_idx = chunk_sent_ids.index(evi_sid)
-                    if local_idx < len(sent_evi):
-                        sent_evi[local_idx] += 1
-        
-        relations.append(relation)
-        hts.append([h, t])
-        sent_labels.append(sent_evi)
-        pos_samples += 1
-    
-    for h in range(num_entities):
-        for t in range(num_entities):
-            if h != t and [h, t] not in hts:
-                relation = [1] + [0] * (len(docred_rel2id) - 1)
-                sent_evi = [0] * len(chunk_sent_pos)
-                relations.append(relation)
-                hts.append([h, t])
-                sent_labels.append(sent_evi)
-                neg_samples += 1
-    
-    assert len(relations) == num_entities * (num_entities - 1)
-    
-    input_ids = tokenizer.convert_tokens_to_ids(chunk_sents)
-    input_ids = tokenizer.build_inputs_with_special_tokens(input_ids)
-    
-    hts_graph = create_hts_graph(hts, chunk_entity_pos)
-    
-    feature = {
-        'input_ids': input_ids,
-        'entity_pos': chunk_entity_pos,
-        'labels': relations,
-        'hts': hts,
-        'sent_pos': chunk_sent_pos,
-        'sent_labels': sent_labels,
-        'title': sample['title'],
-        'doc_rel': doc_rel,
-        'hts_graph': hts_graph
-    }
-    
-    return feature, pos_samples, neg_samples
-
 
 def read_docred(file_in, 
                 tokenizer, 
@@ -328,18 +187,21 @@ def read_docred(file_in,
     pos_samples = 0
     neg_samples = 0
     features = []
+    doc_list = []
+    graph_list = []
     if file_in == "":
         return None
 
     with open(file_in, "r") as fh:
         data = json.load(fh)
 
-    if teacher_sig_path != "":
+    if teacher_sig_path != "": # load logits
         basename = os.path.splitext(os.path.basename(file_in))[0]
         attns_file = os.path.join(teacher_sig_path, f"{basename}.attns")
         attns = pickle.load(open(attns_file, 'rb'))
 
     if single_results != None:  
+        #reorder predictions as relations by title
         pred_pos_samples = 0
         pred_neg_samples = 0
         pred_rels = single_results
@@ -355,6 +217,7 @@ def read_docred(file_in,
         sample = data[doc_id]
         entities = sample['vertexSet']
         entity_start, entity_end = [], []
+        # record entities
         for entity in entities:
             for mention in entity:
                 sent_id = mention["sent_id"]
@@ -362,58 +225,112 @@ def read_docred(file_in,
                 entity_start.append((sent_id, pos[0],))
                 entity_end.append((sent_id, pos[1] - 1,))
 
+        # add entity markers
         sents, sent_map, sent_pos = add_entity_markers(sample, tokenizer, entity_start, entity_end)
 
-        # Get chunks
-        chunks = get_chunks(sent_pos, max_seq_length, overlap=2)
-        
-        for chunk_idx, chunk_sent_ids in enumerate(chunks):
-            result = build_chunk_feature(
-                sample, chunk_sent_ids, sents, sent_map, sent_pos,
-                tokenizer, transformer_type, docred_rel2id
-            )
-            
-            if result is None:
-                continue
-            
-            feature, chunk_pos, chunk_neg = result
-            pos_samples += chunk_pos
-            neg_samples += chunk_neg
-            
-            # Modify title for chunks (keep original if single chunk)
-            if len(chunks) > 1:
-                feature['title'] = f"{sample['title']}_chunk{chunk_idx}"
-            
-            if teacher_sig_path != '':
-                # Teacher attns not supported for chunks
-                pass
+        # training triples with positive examples (entity pairs with labels)
+        train_triple = {}
 
-            if single_results != None:
-                offset = 1 if transformer_type in ["bert", "roberta"] else 0
-                title = sample["title"]
-                if title in title2preds:
-                    pseudo_features, p_pos, p_neg = get_pseudo_features(
-                        feature, title2preds[title], 
-                        # Need to rebuild entities for this chunk
-                        [entities[i] for i in range(len(entities))],
-                        sent_map, offset, tokenizer
-                    )
-                    if single_results != None:
-                        pred_pos_samples += p_pos
-                        pred_neg_samples += p_neg
-                    features.extend(pseudo_features)
-                    i_line += len(pseudo_features)
-                    continue
-            
-            features.append(feature)
-            i_line += 1
+        if "labels" in sample:
+            for label in sample['labels']:
+                evidence = label['evidence']
+                r = int(docred_rel2id[label['r']])
+
+                # update training triples
+                if (label['h'], label['t']) not in train_triple:
+                    train_triple[(label['h'], label['t'])] = [
+                        {'relation': r, 'evidence': evidence}]
+                else:
+                    train_triple[(label['h'], label['t'])].append(
+                        {'relation': r, 'evidence': evidence})
+                
+        # entity start, end position
+        entity_pos = []
+
+        for e in entities:
+            entity_pos.append([])
+            assert len(e) != 0
+            for m in e:
+                start = sent_map[m["sent_id"]][m["pos"][0]]
+                end = sent_map[m["sent_id"]][m["pos"][1]]
+                label = m["type"]
+                entity_pos[-1].append((start, end,))
+
+        relations, hts, sent_labels,doc_rel = [], [], [], []
+        doc_rel = [0] * len(docred_rel2id)
+
+        for h, t in train_triple.keys(): # for every entity pair with gold relation
+            relation = [0] * len(docred_rel2id)
+            sent_evi = [0] * len(sent_pos)
+
+            for mention in train_triple[h, t]: # for each relation mention with head h and tail t
+                relation[mention["relation"]] = 1
+                for i in mention["evidence"]:
+                    sent_evi[i] += 1
+                # doc_rel[mention["relation"]] += 1
+                doc_rel[mention["relation"]] = 1
+            relations.append(relation)
+            hts.append([h, t])
+            sent_labels.append(sent_evi)
+            pos_samples += 1
+
+        for h in range(len(entities)):
+            for t in range(len(entities)):
+                # all entity pairs that do not have relation are treated as negative samples
+                if h != t and [h, t] not in hts: #and [t, h] not in hts:
+                    relation = [1] + [0] * (len(docred_rel2id) - 1)
+                    sent_evi = [0] * len(sent_pos)
+                    relations.append(relation)
+
+                    hts.append([h, t])
+                    sent_labels.append(sent_evi)
+                    neg_samples += 1
+        hts_graph = create_hts_graph(hts,entities)
+        if(doc_id <5) :
+            print(doc_id)
+            print(hts_graph)
+            graph_list.append(hts_graph)
+        assert len(relations) == len(entities) * (len(entities) - 1)
+        # assert len(sents) < max_seq_length
+        sents = sents[:max_seq_length - 2] # truncate, -2 for [CLS] and [SEP]
+        sent_pos = [s for s in sent_pos if s[0] < len(sents)]
+        sent_pos = [(s[0], min(s[1], len(sents))) for s in sent_pos]
+        sent_labels = [[sl[i] for i in range(len(sent_pos))] for sl in sent_labels]
+        input_ids = tokenizer.convert_tokens_to_ids(sents)
+        input_ids = tokenizer.build_inputs_with_special_tokens(input_ids)
+
+        feature = [{'input_ids': input_ids,
+                   'entity_pos': entity_pos,
+                   'labels': relations,
+                   'hts': hts,
+                   'sent_pos': sent_pos,
+                   'sent_labels': sent_labels,
+                   'title': sample['title'],
+                   'doc_rel': doc_rel,
+                   'hts_graph': hts_graph
+                   }]
+
+        if teacher_sig_path != '': # add evidence distributions from the teacher model
+            feature[0]['attns'] = attns[doc_id][:, :len(input_ids)]
+
+        if single_results != None: # get pseudo documents from predictions of the single run
+            offset = 1 if transformer_type in ["bert", "roberta"] else 0
+            if sample["title"] in title2preds:
+                feature, pos_sample, neg_sample, = get_pseudo_features(feature[0], title2preds[sample["title"]], entities, sent_map, offset, tokenizer)
+                pred_pos_samples += pos_sample
+                pred_neg_samples += neg_sample
+
+        i_line += len(feature)
+        features.extend(feature)
 
     print("# of documents {}.".format(i_line))
     if single_results != None:
         print("# of positive examples {}.".format(pred_pos_samples))
         print("# of negative examples {}.".format(pred_neg_samples))
+
     else:        
         print("# of positive examples {}.".format(pos_samples))
         print("# of negative examples {}.".format(neg_samples))
 
     return features
+

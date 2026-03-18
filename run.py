@@ -68,7 +68,7 @@ def train(args, model, train_features, dev_features):
                     loss.append(outputs["loss"]["attn_loss"] * args.attn_lambda)
                 
                 if inputs["doc_rel"] != None:
-                    loss.append(outputs["loss"]["doc_loss"] * 0.2)
+                    loss.append(outputs["loss"]["doc_loss"] * 0.1)
                 loss = sum(loss) / args.gradient_accumulation_steps
                 scaler.scale(loss).backward()
 
@@ -326,8 +326,11 @@ def main():
         dev_features = read(dev_file, tokenizer, transformer_type=args.transformer_type, max_seq_length=args.max_seq_length)
 
         train(args, model, train_features, dev_features)
-
-    else:  # Testing
+        args.load_path = save_path_ 
+    # else:  # Testing
+    
+        model_path = os.path.join(args.load_path, "best.ckpt")
+        model.load_state_dict(torch.load(model_path, map_location=device))
 
         basename = os.path.splitext(args.test_file)[0]
         test_file = os.path.join(args.data_dir, args.test_file)

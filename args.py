@@ -37,7 +37,7 @@ def add_args(parser):
                         help="Number of updates steps to accumulate before performing a backward/update pass.")
     parser.add_argument("--num_labels", default=4, type=int,
                         help="Max number of labels in prediction.")
-    parser.add_argument("--max_sent_num", default=90, type=int,
+    parser.add_argument("--max_sent_num", default=25, type=int,
                         help="Max number of sentences in each document.")
     parser.add_argument("--evi_thresh", default=0.2, type=float,
                         help="Evidence Threshold. ")
@@ -45,7 +45,7 @@ def add_args(parser):
                         help="Weight of relation-agnostic evidence loss during training. ")
     parser.add_argument("--attn_lambda", default=1.0, type=float,
                         help="Weight of knowledge distillation loss for attentions during training. ")
-    parser.add_argument("--lr_transformer", default=5e-5, type=float,
+    parser.add_argument("--lr_transformer", default=3e-5, type=float,
                         help="The initial learning rate for transformer.")
     parser.add_argument("--lr_added", default=1e-4, type=float,
                         help="The initial learning rate for added modules.")
@@ -61,7 +61,7 @@ def add_args(parser):
                         help="Number of training steps between evaluations.")
     parser.add_argument("--seed", type=int, default=66,
                         help="random seed for initialization")
-    parser.add_argument("--num_class", type=int, default=14,
+    parser.add_argument("--num_class", type=int, default=16,
                         help="Number of relation types in dataset.")
 
     return parser
