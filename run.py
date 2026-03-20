@@ -361,11 +361,9 @@ def main():
             df_pc = pd.DataFrame(rows).sort_values('F1', ascending=False).reset_index(drop=True)
             pd.set_option('display.max_rows', None)
             pd.set_option('display.width', 200)
-            print("\n========== PER-CLASS RESULTS ==========")
             print(df_pc.to_string(index=False))
             csv_path = os.path.join(args.load_path, f"{basename}_per_class.csv")
             df_pc.to_csv(csv_path, index=False)
-            print(f"\nSaved to: {csv_path}")        
 
         else: # inference stage fusion
 

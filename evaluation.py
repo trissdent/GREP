@@ -380,16 +380,17 @@ def official_evaluate(tmp, path, train_file = "train_annotated.json", dev_file =
         [re_p_ignore_train, re_r, re_f1_ignore_train]
 
 def official_evaluate_per_class(tmp, path, train_file="train_annotated.json", dev_file="dev.json"):
-    '''
-    Same as official_evaluate but also returns per-class P/R/F1.
-    '''
+
     truth_dir = os.path.join(path, 'ref')
     if not os.path.exists(truth_dir):
         os.makedirs(truth_dir)
 
     fact_in_train_annotated = gen_train_facts(os.path.join(path, train_file), truth_dir)
-    fact_in_train_distant = gen_train_facts(os.path.join(path, "train_distant.json"), truth_dir)
-
+    distant_path = os.path.join(path, "train_distant.json")
+    if os.path.exists(distant_path):
+        fact_in_train_distant = gen_train_facts(distant_path, truth_dir)
+    else:
+        fact_in_train_distant = set()
     truth = json.load(open(os.path.join(path, dev_file)))
 
     std = {}
@@ -464,7 +465,6 @@ def official_evaluate_per_class(tmp, path, train_file="train_annotated.json", de
         else:
             fp_per_class[r] += 1
 
-    # FN: ground truth not predicted
     predicted_set = set()
     for x in submission_answer:
         predicted_set.add((x['title'], x['r'], x['h_idx'], x['t_idx']))
@@ -472,7 +472,6 @@ def official_evaluate_per_class(tmp, path, train_file="train_annotated.json", de
         if (title, r, h_idx, t_idx) not in predicted_set:
             fn_per_class[r] += 1
 
-    # overall (same as original)
     re_p = 1.0 * correct_re / len(submission_answer)
     re_r = 1.0 * correct_re / tot_relations if tot_relations != 0 else 0
     re_f1 = 2.0 * re_p * re_r / (re_p + re_r) if (re_p + re_r) > 0 else 0
@@ -484,7 +483,6 @@ def official_evaluate_per_class(tmp, path, train_file="train_annotated.json", de
     re_p_ign = 1.0 * (correct_re - correct_in_train_annotated) / (len(submission_answer) - correct_in_train_annotated + 1e-5)
     re_f1_ign = 2.0 * re_p_ign * re_r / (re_p_ign + re_r) if (re_p_ign + re_r) > 0 else 0
 
-    # per-class
     all_classes = set(list(tp_per_class.keys()) + list(fp_per_class.keys()) + list(fn_per_class.keys()))
     per_class = {}
     for r in sorted(all_classes):

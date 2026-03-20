@@ -55,7 +55,7 @@ def add_args(parser):
                         help="Max gradient norm.")
     parser.add_argument("--warmup_ratio", default=0.06, type=float,
                         help="Warm up ratio for Adam.")
-    parser.add_argument("--num_train_epochs", default=30.0, type=float,
+    parser.add_argument("--num_train_epochs", default=45.0, type=float,
                         help="Total number of training epochs to perform.")
     parser.add_argument("--evaluation_steps", default=-1, type=int,
                         help="Number of training steps between evaluations.")
